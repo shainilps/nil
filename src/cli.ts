@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { runAgent } from "./agent.js";
 import { listModels } from "./llm.js";
 import type { Context, Message, Model, ModelInfo } from "./llm.js";
@@ -304,9 +305,7 @@ export async function persistSession(
   persistedCount = messages.length;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
-}
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

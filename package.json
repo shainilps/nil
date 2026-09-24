@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "description": "",
   "type": "module",
-  "main": "./dist/index.js",
+  "bin": {
+    "nil": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p .",
+    "prepare": "tsc -p .",
     "start": "node dist/cli.js",
     "dev": "tsc -p . && node dist/cli.js"
   },

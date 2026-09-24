@@ -1,3 +1,4 @@
+import { sign } from "node:crypto";
 import {
   stream,
   buildAssistantMessage,
@@ -22,6 +23,53 @@ type AgentEvent =
       stopReason: "end_turn" | "max_tokens" | "aborted" | "error";
     };
 
+const COMPACT_THRESHOLD = 50;
+const KEEP_RECENT = 20;
+
+async function compactContext(
+  model: Model,
+  context: Context,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) return;
+  if (context.messages.length < COMPACT_THRESHOLD) return;
+
+  const oldMessages = context.messages.slice(0, -KEEP_RECENT);
+  const recentMessages = context.messages.slice(-KEEP_RECENT);
+
+  const conversationText = oldMessages
+    .map(
+      (m) =>
+        `${m.role}: ${typeof m.content === "string" ? m.content : JSON.stringify(m.content)}`,
+    )
+    .join("\n");
+
+  const summaryContext: Context = {
+    systemPrompt: "summarise this context",
+    messages: [{ role: "user", content: conversationText }],
+  };
+
+  let summary = "";
+  let failed = false;
+  for await (const ev of stream(model, summaryContext, { signal })) {
+    if (ev.type === "text_delta") summary += ev.delta;
+    else if (
+      ev.type === "error" ||
+      (ev.type === "done" && ev.stopReason === "aborted")
+    ) {
+      failed = true;
+      break;
+    }
+  }
+
+  if (failed || !summary) return;
+
+  context.messages = [
+    { role: "user", content: `[context summary]\n${summary}` },
+    ...recentMessages,
+  ];
+}
+
 export async function* runAgent(
   model: Model,
   context: Context,
@@ -36,6 +84,8 @@ export async function* runAgent(
   }));
 
   while (true) {
+    await compactContext(model, context, signal)
+
     let text = "";
     let stopReason: "end_turn" | "tool_use" | "max_tokens" | "aborted" =
       "end_turn";
@@ -53,10 +103,40 @@ export async function* runAgent(
         yield { type: "tool_call", id: ev.id, name: ev.name, args: ev.args };
       } else if (ev.type === "done") {
         stopReason = ev.stopReason;
+        if (ev.stopReason === "aborted") {
+          context.messages.push(buildAssistantMessage(text, []));
+          yield { type: "turn_end", stopReason: "aborted" };
+          return;
+        }
+      } else if (ev.type === "error") {
+        context.messages.push(buildAssistantMessage(text, []));
+        yield {
+          type: "assistant_text",
+          delta: `\n[error] ${ev.error.message}`,
+        };
+        yield { type: "turn_end", stopReason: "error" };
+        return;
       }
     }
 
     context.messages.push(buildAssistantMessage(text, toolCalls));
+
+    if (stopReason === "max_tokens" && toolCalls.length > 0) {
+      const results = toolCalls.map((tc) => ({
+        tool_use_id: tc.id,
+        content: `error: output truncated by max_tokens, tool "${tc.name}" args may be incomplete.`,
+      }));
+      context.messages.push(buildToolResultMessage(results));
+      for (let i = 0; i < toolCalls.length; i++) {
+        yield {
+          type: "tool_result",
+          id: toolCalls[i].id,
+          name: toolCalls[i].name,
+          result: results[i].content,
+        };
+      }
+      continue;
+    }
 
     const reason = stopReason === "tool_use" ? "end_turn" : stopReason;
     if (toolCalls.length === 0) {
@@ -83,6 +163,18 @@ export async function* runAgent(
       }
       results.push({ tool_use_id: tc.id, content: result });
       yield { type: "tool_result", id: tc.id, name: tc.name, result };
+
+      if (signal?.aborted) break;
+    }
+
+    for (const tc of toolCalls.slice(results.length)) {
+      results.push({ tool_use_id: tc.id, content: "error: aborted" });
+      yield {
+        type: "tool_result",
+        id: tc.id,
+        name: tc.name,
+        result: "error: aborted",
+      };
     }
 
     context.messages.push(buildToolResultMessage(results));

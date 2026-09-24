@@ -231,7 +231,7 @@ export async function* stream(
       let nl: number;
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1); //dont kow what is this achieving
+        buf = buf.slice(nl + 1);
 
         if (!line.startsWith("data")) continue;
         const data = line.slice(6); 

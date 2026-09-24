@@ -296,3 +296,30 @@ export function buildToolResultMessage(
     })),
   };
 }
+
+export type ModelInfo = { id: string; tools: boolean | null };
+
+const NON_CHAT =
+  /tts|whisper|audio|realtime|transcribe|image|sora|embedding|moderation|davinci|babbage|search|safety/;
+
+export async function listModels(model: Model): Promise<ModelInfo[]> {
+  const url = `${model.baseUrl ?? "https://api.openai.com/v1"}/models`;
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${model.apiKey}` },
+  });
+  if (!response.ok)
+    throw new Error(`API ${response.status}: ${await response.text()}`);
+
+  const json = (await response.json()) as {
+    data: { id: string; supported_parameters?: string[] }[];
+  };
+  return json.data
+    .filter((m) => !NON_CHAT.test(m.id))
+    .map((m) => ({
+      id: m.id,
+      tools: m.supported_parameters
+        ? m.supported_parameters.includes("tools")
+        : null,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}

@@ -1,5 +1,6 @@
 import { runAgent } from "./agent.js";
-import type { Context, Message, Model } from "./llm.js";
+import { listModels } from "./llm.js";
+import type { Context, Message, Model, ModelInfo } from "./llm.js";
 import { builtinTools } from "./tool.js";
 import { Tui } from "./tui.js";
 import { promises as fs } from "node:fs";
@@ -43,7 +44,7 @@ async function main() {
     context.messages.length
       ? `resumed session ${sessionId} (${context.messages.length} messages)`
       : `session ${sessionId}`,
-    `(mode: ${args.auto ? "auto" : "manual"})`,
+    `· ${model.model} · ${args.auto ? "auto" : "manual"} · /help for commands`,
   );
 
   const tools = builtinTools();
@@ -58,10 +59,59 @@ async function main() {
     return answer === "y" || answer === "a";
   };
 
+  let models: ModelInfo[] | null = null;
+  const getModels = async () => (models ??= await listModels(model));
+
+  const commands: Record<string, (arg: string) => Promise<void>> = {
+    async help() {
+      tui.printText(
+        [
+          "/models [filter]  list chat models (tool support shown when known)",
+          "/model [id]       show or switch the current model",
+          "/help             this list",
+          "",
+        ].join("\n"),
+      );
+    },
+    async models(filter) {
+      const list = (await getModels()).filter((m) => m.id.includes(filter));
+      const usable = list.filter((m) => m.tools !== false);
+      for (const m of usable)
+        tui.printText(`${m.id === model.model ? "*" : " "} ${m.id}\n`);
+      const hidden = list.length - usable.length;
+      tui.printText(
+        `${usable.length} model${usable.length === 1 ? "" : "s"}${hidden ? ` (${hidden} without tool support hidden)` : ""}\n`,
+      );
+    },
+    async model(id) {
+      if (!id) return tui.printText(`current model: ${model.model}\n`);
+      let info: ModelInfo | undefined;
+      try {
+        info = (await getModels()).find((m) => m.id === id);
+        if (!info)
+          return tui.printText(`unknown model "${id}", see /models ${id}\n`);
+      } catch (e) {
+        tui.printText(`couldn't verify model (${(e as Error).message})\n`);
+      }
+      if (info?.tools === false)
+        tui.printText("warning: this model doesn't support tools\n");
+      model.model = id;
+      tui.printText(`switched to ${id}\n`);
+    },
+  };
+
   tui.onPrompt(async (text) => {
+    tui.setBusy(true);
     try {
+      if (text.startsWith("/")) {
+        const [name = "", ...rest] = text.slice(1).split(/\s+/);
+        const command = Object.hasOwn(commands, name) ? commands[name] : undefined;
+        if (command) await command(rest.join(" "));
+        else tui.printText(`unknown command /${name}, try /help\n`);
+        return;
+      }
+
       context.messages.push({ role: "user", content: text });
-      tui.setBusy(true);
       const ctrl = new AbortController();
       tui.onAbort(() => ctrl.abort());
 

@@ -34,7 +34,7 @@ async function main() {
 
   const sessionFile = await resolveSession(process.argv.slice(2));
   const context: Context = {
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: SYSTEM_PROMPT + (await loadAgentsMd()),
     messages: await loadSession(sessionFile),
   };
   const sessionId = path.basename(sessionFile, ".jsonl");
@@ -84,9 +84,21 @@ async function main() {
   tui.start();
 }
 
+async function loadAgentsMd(): Promise<string> {
+  try {
+    const text = await fs.readFile("AGENTS.md", "utf-8");
+    return `\n\n# Project instructions (AGENTS.md)\n${text}`;
+  } catch {
+    return "";
+  }
+}
+
 async function resolveSession(argv: string[]): Promise<string> {
   const i = argv.indexOf("--resume");
-  const known = i === -1 ? [] : argv.slice(i, i + 2).filter((a, j) => j === 0 || !a.startsWith("-"));
+  const known =
+    i === -1
+      ? []
+      : argv.slice(i, i + 2).filter((a, j) => j === 0 || !a.startsWith("-"));
   const unknown = argv.find((a) => !known.includes(a));
   if (unknown) {
     console.error(`unknown argument: ${unknown}\nusage: nil [--resume [id]]`);
@@ -103,7 +115,9 @@ async function resolveSession(argv: string[]): Promise<string> {
     try {
       names = await fs.readdir(SESSION_DIR);
     } catch {}
-    const matches = names.filter((n) => n.startsWith(id) && n.endsWith(".jsonl"));
+    const matches = names.filter(
+      (n) => n.startsWith(id) && n.endsWith(".jsonl"),
+    );
     if (matches.length !== 1) {
       console.error(
         matches.length
@@ -162,7 +176,6 @@ export async function persistSession(
   file: string,
 ): Promise<void> {
   await fs.mkdir(path.dirname(file) || ".", { recursive: true });
-  // compaction shrank the history: rewrite the file instead of appending
   if (messages.length < persistedCount) {
     await fs.writeFile(file, "", "utf-8");
     persistedCount = 0;

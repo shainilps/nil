@@ -17,16 +17,16 @@ const SYSTEM_PROMPT =
 let persistedCount = 0;
 
 async function main() {
-  const apiKey = process.env.API_KEY;
+  const apiKey = process.env.NANOPI_API_KEY;
   if (!apiKey) {
-    console.error("API_KEY is not set");
+    console.error("NANOPI_API_KEY is not set");
     process.exit(1);
   }
 
   const model: Model = {
     apiKey,
-    model: process.env.MODEL ?? "glm-5.2",
-    baseUrl: process.env.BASE_URL ?? "https://api.openai.com/v1",
+    model: process.env.NANOPI_MODEL ?? "glm-5.2",
+    baseUrl: process.env.NANOPI_BASE_URL ?? "https://api.openai.com/v1",
     maxTokens: 4096,
   };
 

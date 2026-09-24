@@ -3,11 +3,11 @@ import type { Context, Message, Model } from "./llm.js";
 import { builtinTools } from "./tool.js";
 import { Tui } from "./tui.js";
 import { promises as fs } from "node:fs";
+import { randomBytes } from "node:crypto";
 
 import * as path from "node:path";
 
 const SESSION_DIR = "./.nil";
-const SESSION_FILE = path.join(SESSION_DIR, "session.jsonl");
 const SYSTEM_PROMPT = [
   `You are nil, a coding agent. Working directory: ${process.cwd()}`,
   "Use tools to inspect files and run commands; never guess file contents.",
@@ -32,10 +32,17 @@ async function main() {
     maxTokens: 4096,
   };
 
+  const sessionFile = await resolveSession(process.argv.slice(2));
   const context: Context = {
     systemPrompt: SYSTEM_PROMPT,
-    messages: await loadSession(),
+    messages: await loadSession(sessionFile),
   };
+  const sessionId = path.basename(sessionFile, ".jsonl");
+  console.log(
+    context.messages.length
+      ? `resumed session ${sessionId} (${context.messages.length} messages)`
+      : `session ${sessionId}`,
+  );
 
   const tools = builtinTools();
   const tui = new Tui();
@@ -67,7 +74,7 @@ async function main() {
         }
       }
 
-      await persistSession(context.messages);
+      await persistSession(context.messages, sessionFile);
     } catch (e) {
       console.error(`\n[error] ${(e as Error).message}`);
     } finally {
@@ -77,9 +84,50 @@ async function main() {
   tui.start();
 }
 
-export async function loadSession(
-  file: string = SESSION_FILE,
-): Promise<Message[]> {
+async function resolveSession(argv: string[]): Promise<string> {
+  const i = argv.indexOf("--resume");
+  if (i === -1) {
+    const id = randomBytes(4).toString("hex");
+    return path.join(SESSION_DIR, `${id}.jsonl`);
+  }
+
+  const id = argv[i + 1];
+  if (id && !id.startsWith("-")) {
+    const file = path.join(SESSION_DIR, `${id}.jsonl`);
+    try {
+      await fs.access(file);
+    } catch {
+      console.error(`session ${id} not found in ${SESSION_DIR}`);
+      process.exit(1);
+    }
+    return file;
+  }
+
+  const latest = await latestSession();
+  if (!latest) {
+    console.error(`no sessions to resume in ${SESSION_DIR}`);
+    process.exit(1);
+  }
+  return latest;
+}
+
+async function latestSession(): Promise<string | null> {
+  let names: string[];
+  try {
+    names = (await fs.readdir(SESSION_DIR)).filter((n) => n.endsWith(".jsonl"));
+  } catch {
+    return null;
+  }
+  let best: { file: string; mtime: number } | null = null;
+  for (const n of names) {
+    const file = path.join(SESSION_DIR, n);
+    const { mtimeMs } = await fs.stat(file);
+    if (!best || mtimeMs > best.mtime) best = { file, mtime: mtimeMs };
+  }
+  return best?.file ?? null;
+}
+
+export async function loadSession(file: string): Promise<Message[]> {
   try {
     const data = await fs.readFile(file, "utf-8");
     const lines = data.trim().split("\n").filter(Boolean);
@@ -99,9 +147,14 @@ export async function loadSession(
 
 export async function persistSession(
   messages: Message[],
-  file: string = SESSION_FILE,
+  file: string,
 ): Promise<void> {
   await fs.mkdir(path.dirname(file) || ".", { recursive: true });
+  // compaction shrank the history: rewrite the file instead of appending
+  if (messages.length < persistedCount) {
+    await fs.writeFile(file, "", "utf-8");
+    persistedCount = 0;
+  }
   const newMessages = messages.slice(persistedCount);
   for (const msg of newMessages) {
     await fs.appendFile(file, JSON.stringify(msg) + "\n", "utf-8");

@@ -7,10 +7,10 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const SESSION_DIR = path.join(os.homedir(), ".nanopi");
+const SESSION_DIR = path.join(os.homedir(), ".nil");
 const SESSION_FILE = path.join(SESSION_DIR, "session.jsonl");
 const SYSTEM_PROMPT = [
-  `You are nanopi, a coding agent. Working directory: ${process.cwd()}`,
+  `You are nil, a coding agent. Working directory: ${process.cwd()}`,
   "Use tools to inspect files and run commands; never guess file contents.",
   "- Read a file before editing it. Prefer edit over write_file for existing files.",
   "- After changes, verify (build, test, or re-read) when practical.",
@@ -20,16 +20,16 @@ const SYSTEM_PROMPT = [
 let persistedCount = 0;
 
 async function main() {
-  const apiKey = process.env.NANOPI_API_KEY;
+  const apiKey = process.env.NIL_API_KEY;
   if (!apiKey) {
-    console.error("NANOPI_API_KEY is not set");
+    console.error("NIL_API_KEY is not set");
     process.exit(1);
   }
 
   const model: Model = {
     apiKey,
-    model: process.env.NANOPI_MODEL ?? "glm-5.2",
-    baseUrl: process.env.NANOPI_BASE_URL ?? "https://api.openai.com/v1",
+    model: process.env.NIL_MODEL ?? "glm-5.2",
+    baseUrl: process.env.NIL_BASE_URL ?? "https://api.openai.com/v1",
     maxTokens: 4096,
   };
 

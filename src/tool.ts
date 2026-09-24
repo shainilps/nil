@@ -20,7 +20,7 @@ async function truncateOutput(
   const kept = lines.slice(-maxLines).join("\n");
   const tmpPath = path.join(
     os.tmpdir(),
-    `nanopi-output-${process.pid}-${truncateCounter++}.txt`,
+    `nil-output-${process.pid}-${truncateCounter++}.txt`,
   );
   await fs.writeFile(tmpPath, content, "utf-8");
   return `[output truncated: showing last ${maxLines} of ${lines.length} lines. full output: ${tmpPath}]\n${kept}`;

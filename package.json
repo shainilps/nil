@@ -1,11 +1,13 @@
 {
-  "name": "pi_from_scratch",
+  "name": "nil",
   "version": "1.0.0",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p .",
+    "start": "node dist/cli.js",
+    "dev": "tsc -p . && node dist/cli.js"
   },
   "keywords": [],
   "author": "shainilps",

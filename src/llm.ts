@@ -234,10 +234,10 @@ export async function* stream(
         buf = buf.slice(nl + 1);
 
         if (!line.startsWith("data")) continue;
-        const data = line.slice(6); 
+        const data = line.slice(6);
         if (data == "[DONE]") continue;
 
-        const result = handleSSELine(data, toolCallBuffers); //data is a slice here ??
+        const result = handleSSELine(data, toolCallBuffers);
         if (result.textDelta)
           yield { type: "text_delta", delta: result.textDelta };
         if (result.stopReason) stopReason = result.stopReason;
@@ -296,6 +296,3 @@ export function buildToolResultMessage(
     })),
   };
 }
-
-
-

@@ -29,7 +29,7 @@ const KEEP_RECENT = 20;
 async function compactContext(
   model: Model,
   context: Context,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<void> {
   if (signal?.aborted) return;
   if (context.messages.length < COMPACT_THRESHOLD) return;
@@ -84,7 +84,7 @@ export async function* runAgent(
   }));
 
   while (true) {
-    await compactContext(model, context, signal)
+    await compactContext(model, context, signal);
 
     let text = "";
     let stopReason: "end_turn" | "tool_use" | "max_tokens" | "aborted" =
@@ -130,9 +130,9 @@ export async function* runAgent(
       for (let i = 0; i < toolCalls.length; i++) {
         yield {
           type: "tool_result",
-          id: toolCalls[i].id,
-          name: toolCalls[i].name,
-          result: results[i].content,
+          id: toolCalls[i]!.id,
+          name: toolCalls[i]!.name,
+          result: results[i]!.content,
         };
       }
       continue;

@@ -9,10 +9,13 @@ import * as os from "node:os";
 
 const SESSION_DIR = path.join(os.homedir(), ".nanopi");
 const SESSION_FILE = path.join(SESSION_DIR, "session.jsonl");
-const SYSTEM_PROMPT =
-  "You are a coding assistant. Use the provided tools to read/write files\
-   and execute commands to complete tasks.\
-   Read before modifying, and after making changes you can run commands to verify";
+const SYSTEM_PROMPT = [
+  `You are nanopi, a coding agent. Working directory: ${process.cwd()}`,
+  "Use tools to inspect files and run commands; never guess file contents.",
+  "- Read a file before editing it. Prefer edit over write_file for existing files.",
+  "- After changes, verify (build, test, or re-read) when practical.",
+  "- Be brief. Say what you changed; don't paste whole files back.",
+].join("\n");
 
 let persistedCount = 0;
 

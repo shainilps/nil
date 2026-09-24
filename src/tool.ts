@@ -28,10 +28,13 @@ async function truncateOutput(
 
 const readFile: AgentTool = {
   name: "read_file",
-  description: "read file: reads the path and provide output within 200 lines",
+  description:
+    "Read a text file. Files over 200 lines return only the last 200; use run_bash (e.g. sed -n '1,100p') for other ranges.",
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "path of the file" } },
+    properties: {
+      path: { type: "string", description: "File path, absolute or relative to cwd" },
+    },
     required: ["path"],
   },
   execute: async (args) => {
@@ -43,15 +46,13 @@ const readFile: AgentTool = {
 
 const writeFile: AgentTool = {
   name: "write_file",
-  description: "write the content to the file",
+  description:
+    "Create or fully overwrite a file (parent dirs are created). For small changes to existing files use edit.",
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "path of the file" },
-      content: {
-        type: "string",
-        description: "content that needs to be written",
-      },
+      path: { type: "string", description: "File path" },
+      content: { type: "string", description: "Full file content" },
     },
     required: ["path", "content"],
   },
@@ -68,16 +69,14 @@ const writeFile: AgentTool = {
 
 const edit: AgentTool = {
   name: "edit",
-  description: "edits the file with new content replacing with old content",
+  description:
+    "Replace one exact occurrence of old_string with new_string in a file. old_string must match exactly (including whitespace) and be unique; add surrounding lines if needed.",
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "file path" },
-      old_string: {
-        type: "string",
-        description: "content to be replaced",
-      },
-      new_string: { type: "string", description: "content to be added" },
+      path: { type: "string", description: "File path" },
+      old_string: { type: "string", description: "Exact text to replace" },
+      new_string: { type: "string", description: "Replacement text" },
     },
     required: ["path", "old_string", "new_string"],
   },
@@ -103,14 +102,11 @@ const edit: AgentTool = {
 const runBash: AgentTool = {
   name: "run_bash",
   description:
-    "run the bash command and provide the output in 200 lines or else return the file path",
+    "Run a shell command in cwd (30s timeout, non-interactive). Returns stdout/stderr; output over 200 lines is cut to the last 200 with the full log saved to a temp file.",
   parameters: {
     type: "object",
     properties: {
-      command: {
-        type: "string",
-        description: "bash command that needs to be run",
-      },
+      command: { type: "string", description: "Shell command" },
     },
     required: ["command"],
   },

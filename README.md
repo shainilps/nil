@@ -3,7 +3,7 @@
 A minimal coding agent for the terminal. Works with any OpenAI-compatible API
 (OpenAI, OpenRouter, Ollama, ...).
 
-    pnpm install && npm link
+    pnpm install && npm link    # uninstall: npm unlink -g nil
 
 Set up the environment:
 

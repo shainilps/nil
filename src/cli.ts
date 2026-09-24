@@ -86,6 +86,12 @@ async function main() {
 
 async function resolveSession(argv: string[]): Promise<string> {
   const i = argv.indexOf("--resume");
+  const known = i === -1 ? [] : argv.slice(i, i + 2).filter((a, j) => j === 0 || !a.startsWith("-"));
+  const unknown = argv.find((a) => !known.includes(a));
+  if (unknown) {
+    console.error(`unknown argument: ${unknown}\nusage: nil [--resume [id]]`);
+    process.exit(1);
+  }
   if (i === -1) {
     const id = randomBytes(4).toString("hex");
     return path.join(SESSION_DIR, `${id}.jsonl`);
@@ -93,14 +99,20 @@ async function resolveSession(argv: string[]): Promise<string> {
 
   const id = argv[i + 1];
   if (id && !id.startsWith("-")) {
-    const file = path.join(SESSION_DIR, `${id}.jsonl`);
+    let names: string[] = [];
     try {
-      await fs.access(file);
-    } catch {
-      console.error(`session ${id} not found in ${SESSION_DIR}`);
+      names = await fs.readdir(SESSION_DIR);
+    } catch {}
+    const matches = names.filter((n) => n.startsWith(id) && n.endsWith(".jsonl"));
+    if (matches.length !== 1) {
+      console.error(
+        matches.length
+          ? `session id "${id}" is ambiguous: ${matches.map((m) => path.basename(m, ".jsonl")).join(", ")}`
+          : `session ${id} not found in ${SESSION_DIR} (sessions are saved after the first message)`,
+      );
       process.exit(1);
     }
-    return file;
+    return path.join(SESSION_DIR, matches[0]!);
   }
 
   const latest = await latestSession();

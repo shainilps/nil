@@ -2,7 +2,7 @@ import { runAgent } from "./agent.js";
 import { listModels } from "./llm.js";
 import type { Context, Message, Model, ModelInfo } from "./llm.js";
 import { builtinTools } from "./tool.js";
-import { Tui } from "./tui.js";
+import { Tui, color } from "./tui.js";
 import { promises as fs } from "node:fs";
 import { randomBytes } from "node:crypto";
 
@@ -40,21 +40,25 @@ async function main() {
     messages: await loadSession(sessionFile),
   };
   const sessionId = path.basename(sessionFile, ".jsonl");
-  console.log(
-    context.messages.length
-      ? `resumed session ${sessionId} (${context.messages.length} messages)`
-      : `session ${sessionId}`,
-    `· ${model.model} · ${args.auto ? "auto" : "manual"} · /help for commands`,
+  const tui = new Tui();
+  tui.printNotice(
+    [
+      context.messages.length
+        ? `resumed session ${sessionId} (${context.messages.length} messages)`
+        : `session ${sessionId}`,
+      model.model,
+      args.auto ? "auto" : "manual",
+      "/help for commands",
+    ].join(" · ") + "\n",
   );
 
   const tools = builtinTools();
-  const tui = new Tui();
 
   const alwaysAllow = new Set<string>();
   const approve = async (name: string, toolArgs: unknown) => {
     if (args.auto || alwaysAllow.has(name)) return true;
     tui.printText(preview(name, toolArgs));
-    const answer = await tui.confirm("allow? [y/n/a] ");
+    const answer = await tui.confirm("  allow? [y/n/a] ");
     if (answer === "a") alwaysAllow.add(name);
     return answer === "y" || answer === "a";
   };
@@ -78,7 +82,7 @@ async function main() {
       if (arg === "auto") args.auto = true;
       else if (arg === "manual") {
         args.auto = false;
-        alwaysAllow.clear(); // manual means ask again, even for "a" answers
+        alwaysAllow.clear(); 
       } else if (arg)
         return tui.printText("usage: /mode [auto|manual]\n");
       tui.printText(`mode: ${args.auto ? "auto" : "manual"}\n`);
@@ -144,8 +148,9 @@ async function main() {
             break;
           case "turn_end":
             if (ev.stopReason === "max_tokens")
-              tui.printText("\n[output truncated by max_tokens]");
-            if (ev.stopReason === "error") tui.printText("\n[error occurred]");
+              tui.printNotice("[output truncated by max_tokens]", "yellow");
+            if (ev.stopReason === "error")
+              tui.printNotice("[error occurred]", "red");
             tui.printTurnEnd();
             break;
         }
@@ -153,7 +158,7 @@ async function main() {
 
       await persistSession(context.messages, sessionFile);
     } catch (e) {
-      console.error(`\n[error] ${(e as Error).message}`);
+      tui.printNotice(`[error] ${(e as Error).message}`, "red");
     } finally {
       tui.setBusy(false);
     }
@@ -170,20 +175,16 @@ async function loadAgentsMd(): Promise<string> {
   }
 }
 
+// extra detail shown before approval; the ● line already has path/command
 function preview(name: string, toolArgs: unknown): string {
+  if (name !== "edit") return "";
   const a = toolArgs as Record<string, string>;
-  if (name === "run_bash") return `  $ ${a.command}\n`;
-  if (name === "write_file")
-    return `  write ${a.path} (${String(a.content ?? "").split("\n").length} lines)\n`;
-  if (name === "edit") {
-    const lines = (text: string | undefined, sign: string) =>
-      String(text ?? "")
-        .split("\n")
-        .map((l) => `  ${sign} ${l}`)
-        .join("\n");
-    return `  edit ${a.path}\n${lines(a.old_string, "-")}\n${lines(a.new_string, "+")}\n`;
-  }
-  return "";
+  const lines = (text: string | undefined, sign: string, tint: (s: string) => string) =>
+    String(text ?? "")
+      .split("\n")
+      .map((l) => tint(`  ${sign} ${l}`))
+      .join("\n");
+  return `${lines(a.old_string, "-", color.red)}\n${lines(a.new_string, "+", color.green)}\n`;
 }
 
 function parseArgs(argv: string[]): {

@@ -101,7 +101,6 @@ export async function* runAgent(
         yield { type: "assistant_text", delta: ev.delta };
       } else if (ev.type === "tool_call") {
         toolCalls.push({ id: ev.id, name: ev.name, args: ev.args });
-        yield { type: "tool_call", id: ev.id, name: ev.name, args: ev.args };
       } else if (ev.type === "done") {
         stopReason = ev.stopReason;
         if (ev.stopReason === "aborted") {
@@ -129,6 +128,7 @@ export async function* runAgent(
       }));
       context.messages.push(buildToolResultMessage(results));
       for (let i = 0; i < toolCalls.length; i++) {
+        yield { type: "tool_call", ...toolCalls[i]! };
         yield {
           type: "tool_result",
           id: toolCalls[i]!.id,
@@ -151,6 +151,7 @@ export async function* runAgent(
 
     const results: { tool_use_id: string; content: string }[] = [];
     for (const tc of toolCalls) {
+      yield { type: "tool_call", ...tc };
       const tool = toolMap.get(tc.name);
       let result: string;
       if (!tool) {
@@ -176,6 +177,7 @@ export async function* runAgent(
 
     for (const tc of toolCalls.slice(results.length)) {
       results.push({ tool_use_id: tc.id, content: "error: aborted" });
+      yield { type: "tool_call", ...tc };
       yield {
         type: "tool_result",
         id: tc.id,

@@ -5,9 +5,8 @@ import { Tui } from "./tui.js";
 import { promises as fs } from "node:fs";
 
 import * as path from "node:path";
-import * as os from "node:os";
 
-const SESSION_DIR = path.join(os.homedir(), ".nil");
+const SESSION_DIR = "./.nil";
 const SESSION_FILE = path.join(SESSION_DIR, "session.jsonl");
 const SYSTEM_PROMPT = [
   `You are nil, a coding agent. Working directory: ${process.cwd()}`,
@@ -28,7 +27,7 @@ async function main() {
 
   const model: Model = {
     apiKey,
-    model: process.env.NIL_MODEL ?? "glm-5.2",
+    model: process.env.NIL_MODEL ?? "gpt-5.4-nano",
     baseUrl: process.env.NIL_BASE_URL ?? "https://api.openai.com/v1",
     maxTokens: 4096,
   };

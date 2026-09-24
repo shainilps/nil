@@ -45,6 +45,7 @@ const readFile: AgentTool = {
 };
 
 const writeFile: AgentTool = {
+  needApproval: true,
   name: "write_file",
   description:
     "Create or fully overwrite a file (parent dirs are created). For small changes to existing files use edit.",
@@ -68,6 +69,7 @@ const writeFile: AgentTool = {
 };
 
 const edit: AgentTool = {
+  needApproval: true,
   name: "edit",
   description:
     "Replace one exact occurrence of old_string with new_string in a file. old_string must match exactly (including whitespace) and be unique; add surrounding lines if needed.",
@@ -100,6 +102,7 @@ const edit: AgentTool = {
 };
 
 const runBash: AgentTool = {
+  needApproval: true,
   name: "run_bash",
   description:
     "Run a shell command in cwd (30s timeout, non-interactive). Returns stdout/stderr; output over 200 lines is cut to the last 200 with the full log saved to a temp file.",

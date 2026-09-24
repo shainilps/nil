@@ -32,7 +32,8 @@ async function main() {
     maxTokens: 4096,
   };
 
-  const sessionFile = await resolveSession(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2));
+  const sessionFile = await resolveSession(args.resume);
   const context: Context = {
     systemPrompt: SYSTEM_PROMPT + (await loadAgentsMd()),
     messages: await loadSession(sessionFile),
@@ -42,10 +43,20 @@ async function main() {
     context.messages.length
       ? `resumed session ${sessionId} (${context.messages.length} messages)`
       : `session ${sessionId}`,
+    `(mode: ${args.auto ? "auto" : "manual"})`,
   );
 
   const tools = builtinTools();
   const tui = new Tui();
+
+  const alwaysAllow = new Set<string>();
+  const approve = async (name: string, toolArgs: unknown) => {
+    if (args.auto || alwaysAllow.has(name)) return true;
+    tui.printText(preview(name, toolArgs));
+    const answer = await tui.confirm("allow? [y/n/a] ");
+    if (answer === "a") alwaysAllow.add(name);
+    return answer === "y" || answer === "a";
+  };
 
   tui.onPrompt(async (text) => {
     try {
@@ -54,7 +65,13 @@ async function main() {
       const ctrl = new AbortController();
       tui.onAbort(() => ctrl.abort());
 
-      for await (const ev of runAgent(model, context, tools, ctrl.signal)) {
+      for await (const ev of runAgent(
+        model,
+        context,
+        tools,
+        ctrl.signal,
+        approve,
+      )) {
         switch (ev.type) {
           case "assistant_text":
             tui.printText(ev.delta);
@@ -93,24 +110,55 @@ async function loadAgentsMd(): Promise<string> {
   }
 }
 
-async function resolveSession(argv: string[]): Promise<string> {
-  const i = argv.indexOf("--resume");
-  const known =
-    i === -1
-      ? []
-      : argv.slice(i, i + 2).filter((a, j) => j === 0 || !a.startsWith("-"));
-  const unknown = argv.find((a) => !known.includes(a));
-  if (unknown) {
-    console.error(`unknown argument: ${unknown}\nusage: nil [--resume [id]]`);
-    process.exit(1);
+function preview(name: string, toolArgs: unknown): string {
+  const a = toolArgs as Record<string, string>;
+  if (name === "run_bash") return `  $ ${a.command}\n`;
+  if (name === "write_file")
+    return `  write ${a.path} (${String(a.content ?? "").split("\n").length} lines)\n`;
+  if (name === "edit") {
+    const lines = (text: string | undefined, sign: string) =>
+      String(text ?? "")
+        .split("\n")
+        .map((l) => `  ${sign} ${l}`)
+        .join("\n");
+    return `  edit ${a.path}\n${lines(a.old_string, "-")}\n${lines(a.new_string, "+")}\n`;
   }
-  if (i === -1) {
+  return "";
+}
+
+// nil [--auto] [--resume [id]]
+function parseArgs(argv: string[]): {
+  auto: boolean;
+  resume: string | true | undefined;
+} {
+  let auto = false;
+  let resume: string | true | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--auto") auto = true;
+    else if (a === "--resume") {
+      const next = argv[i + 1];
+      if (next && !next.startsWith("-")) {
+        resume = next;
+        i++;
+      } else resume = true;
+    } else {
+      console.error(`unknown argument: ${a}\nusage: nil [--auto] [--resume [id]]`);
+      process.exit(1);
+    }
+  }
+  return { auto, resume };
+}
+
+// undefined: new session; true: latest in SESSION_DIR; string: id prefix
+async function resolveSession(resume: string | true | undefined): Promise<string> {
+  if (resume === undefined) {
     const id = randomBytes(4).toString("hex");
     return path.join(SESSION_DIR, `${id}.jsonl`);
   }
 
-  const id = argv[i + 1];
-  if (id && !id.startsWith("-")) {
+  if (typeof resume === "string") {
+    const id = resume;
     let names: string[] = [];
     try {
       names = await fs.readdir(SESSION_DIR);

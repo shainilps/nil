@@ -1,4 +1,3 @@
-import { sign } from "node:crypto";
 import {
   stream,
   buildAssistantMessage,
@@ -11,6 +10,7 @@ export type AgentTool = {
   name: string;
   description: string;
   parameters: object;
+  needApproval?: boolean;
   execute: (args: unknown, signal?: AbortSignal) => Promise<string>;
 };
 
@@ -75,6 +75,7 @@ export async function* runAgent(
   context: Context,
   tools: AgentTool[],
   signal: AbortSignal,
+  approve?: (name: string, args: unknown) => Promise<boolean>,
 ): AsyncGenerator<AgentEvent> {
   const toolMap = new Map(tools.map((t) => [t.name, t]));
   const toolDefs = tools.map((t) => ({
@@ -154,6 +155,12 @@ export async function* runAgent(
       let result: string;
       if (!tool) {
         result = `error: tool "${tc.name}" not found`;
+      } else if (
+        tool.needApproval &&
+        approve &&
+        !(await approve(tc.name, tc.args))
+      ) {
+        result = "error: user denied this tool call";
       } else {
         try {
           result = await tool.execute(tc.args, signal);

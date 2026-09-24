@@ -97,7 +97,8 @@ const edit: AgentTool = {
       );
     const newContent = content.replace(old_string, () => new_string);
     await fs.writeFile(filePath, newContent, "utf-8");
-    return `edited ${filePath}: replaced ${old_string.length} chars`;
+    const lines = (s: string) => s.split("\n").length;
+    return `edited ${filePath} (+${lines(new_string)} −${lines(old_string)})`;
   },
 };
 

@@ -17,10 +17,12 @@ export type AgentTool = {
 type AgentEvent =
   | { type: "assistant_text"; delta: string }
   | { type: "tool_call"; id: string; name: string; args: unknown }
+  | { type: "tool_start"; id: string; name: string; args: unknown }
   | { type: "tool_result"; id: string; name: string; result: string }
   | {
       type: "turn_end";
       stopReason: "end_turn" | "max_tokens" | "aborted" | "error";
+      usage: { input: number; output: number };
     };
 
 const COMPACT_THRESHOLD = 50;
@@ -84,6 +86,8 @@ export async function* runAgent(
     parameters: t.parameters,
   }));
 
+  const usage = { input: 0, output: 0 };
+
   while (true) {
     await compactContext(model, context, signal);
 
@@ -96,7 +100,10 @@ export async function* runAgent(
       tools: toolDefs,
       signal,
     })) {
-      if (ev.type === "text_delta") {
+      if (ev.type === "usage") {
+        usage.input += ev.input;
+        usage.output += ev.output;
+      } else if (ev.type === "text_delta") {
         text += ev.delta;
         yield { type: "assistant_text", delta: ev.delta };
       } else if (ev.type === "tool_call") {
@@ -105,7 +112,7 @@ export async function* runAgent(
         stopReason = ev.stopReason;
         if (ev.stopReason === "aborted") {
           context.messages.push(buildAssistantMessage(text, []));
-          yield { type: "turn_end", stopReason: "aborted" };
+          yield { type: "turn_end", stopReason: "aborted", usage };
           return;
         }
       } else if (ev.type === "error") {
@@ -114,7 +121,7 @@ export async function* runAgent(
           type: "assistant_text",
           delta: `\n[error] ${ev.error.message}`,
         };
-        yield { type: "turn_end", stopReason: "error" };
+        yield { type: "turn_end", stopReason: "error", usage };
         return;
       }
     }
@@ -141,7 +148,7 @@ export async function* runAgent(
 
     const reason = stopReason === "tool_use" ? "end_turn" : stopReason;
     if (toolCalls.length === 0) {
-      yield { type: "turn_end", stopReason: reason };
+      yield { type: "turn_end", stopReason: reason, usage };
       return;
     }
 
@@ -163,6 +170,7 @@ export async function* runAgent(
       ) {
         result = "error: user denied this tool call";
       } else {
+        yield { type: "tool_start", ...tc };
         try {
           result = await tool.execute(tc.args, signal);
         } catch (e) {

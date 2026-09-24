@@ -40,7 +40,7 @@ async function main() {
     messages: await loadSession(sessionFile),
   };
   const sessionId = path.basename(sessionFile, ".jsonl");
-  const tui = new Tui();
+  const tui = new Tui(path.join(SESSION_DIR, "history"));
   tui.printNotice(
     [
       context.messages.length
@@ -115,6 +115,7 @@ async function main() {
   };
 
   tui.onPrompt(async (text) => {
+    const startedAt = Date.now();
     tui.setBusy(true);
     try {
       if (text.startsWith("/")) {
@@ -143,6 +144,9 @@ async function main() {
           case "tool_call":
             tui.printToolCall(ev.name, ev.args);
             break;
+          case "tool_start":
+            tui.spin("running");
+            break;
           case "tool_result":
             tui.printToolResult(ev.name, ev.result);
             break;
@@ -151,7 +155,7 @@ async function main() {
               tui.printNotice("[output truncated by max_tokens]", "yellow");
             if (ev.stopReason === "error")
               tui.printNotice("[error occurred]", "red");
-            tui.printTurnEnd();
+            tui.printTurnEnd(turnStats(Date.now() - startedAt, ev.usage));
             break;
         }
       }
@@ -175,7 +179,13 @@ async function loadAgentsMd(): Promise<string> {
   }
 }
 
-// extra detail shown before approval; the ● line already has path/command
+function turnStats(ms: number, usage: { input: number; output: number }): string {
+  const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+  const time = `${(ms / 1000).toFixed(1)}s`;
+  if (!usage.input && !usage.output) return time;
+  return `${time} · ↑${k(usage.input)} ↓${k(usage.output)} tokens`;
+}
+
 function preview(name: string, toolArgs: unknown): string {
   if (name !== "edit") return "";
   const a = toolArgs as Record<string, string>;

@@ -1,4 +1,6 @@
 import * as readline from "readline";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const ansi = (code: string) => (s: string) =>
@@ -15,6 +17,9 @@ export const color = {
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const RESULT_PREVIEW_LINES = 3;
+const HISTORY_SIZE = 200;
+// show elapsed seconds once waiting gets noticeable
+const SHOW_ELAPSED_AFTER_MS = 3000;
 
 export class Tui {
   private rl: readline.Interface | null = null;
@@ -26,6 +31,9 @@ export class Tui {
   private confirmCancelled = false;
   private spinner: NodeJS.Timeout | null = null;
   private atLineStart = true;
+
+  // historyFile: where up/down-arrow prompt history is kept between runs
+  constructor(private historyFile?: string) {}
 
   onPrompt(cb: (text: string) => void): void {
     this.onPromptCb = cb;
@@ -39,6 +47,9 @@ export class Tui {
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
+      history: this.loadHistory(),
+      historySize: HISTORY_SIZE,
+      removeHistoryDuplicates: true,
     });
     // without a SIGINT listener readline closes itself on Ctrl+C
     this.rl.on("SIGINT", () => {
@@ -66,6 +77,7 @@ export class Tui {
     this.rl.question(color.bold(color.cyan("❯ ")), (answer) => {
       const text = answer.trim();
       if (text) {
+        this.saveHistory();
         this.onPromptCb?.(text);
       } else {
         this.prompt();
@@ -91,6 +103,9 @@ export class Tui {
       this.confirmCancelled = false;
       this.rl.question(color.yellow(question), (answer) => {
         this.confirming = false;
+        // keep y/n answers out of the up-arrow history
+        const history = this.history();
+        if (answer && history[0] === answer) history.shift();
         this.atLineStart = true;
         resolve(this.confirmCancelled ? "n" : answer.trim().toLowerCase());
       });
@@ -130,8 +145,15 @@ export class Tui {
     if (this.busy) this.startSpinner();
   }
 
-  printTurnEnd(): void {
+  // show a spinner with a label, e.g. while a tool runs
+  spin(label: string): void {
+    this.stopSpinner();
+    this.startSpinner(label);
+  }
+
+  printTurnEnd(stats?: string): void {
     this.newline();
+    if (stats) this.write(color.dim(`✓ ${stats}`) + "\n");
     this.write("\n");
   }
 
@@ -153,16 +175,46 @@ export class Tui {
     if (!this.atLineStart) this.write("\n");
   }
 
-  private startSpinner(): void {
+  private startSpinner(label = "thinking"): void {
     if (!process.stdout.isTTY || this.spinner) return;
     this.newline();
     let i = 0;
-    const draw = () =>
+    const started = Date.now();
+    const draw = () => {
+      const ms = Date.now() - started;
+      const elapsed = ms >= SHOW_ELAPSED_AFTER_MS ? ` ${Math.floor(ms / 1000)}s` : "";
       process.stdout.write(
-        `\r${color.cyan(SPINNER[i++ % SPINNER.length]!)} ${color.dim("thinking…")}`,
+        `\r${color.cyan(SPINNER[i++ % SPINNER.length]!)} ${color.dim(`${label}…${elapsed}`)}`,
       );
+    };
     draw();
     this.spinner = setInterval(draw, 80);
+  }
+
+  // readline keeps history newest-first; it isn't in the public typings
+  private history(): string[] {
+    return (this.rl as unknown as { history?: string[] } | null)?.history ?? [];
+  }
+
+  private loadHistory(): string[] {
+    if (!this.historyFile) return [];
+    try {
+      const lines = fs.readFileSync(this.historyFile, "utf-8").split("\n");
+      return lines.filter(Boolean).slice(-HISTORY_SIZE).reverse();
+    } catch {
+      return [];
+    }
+  }
+
+  private saveHistory(): void {
+    if (!this.historyFile) return;
+    try {
+      fs.mkdirSync(path.dirname(this.historyFile), { recursive: true });
+      const lines = [...this.history()].reverse();
+      fs.writeFileSync(this.historyFile, lines.join("\n") + "\n");
+    } catch {
+      // history is a convenience; never fail a prompt over it
+    }
   }
 
   private stopSpinner(): void {

@@ -27,6 +27,7 @@ export type StreamEvent =
       type: "done";
       stopReason: "end_turn" | "tool_use" | "max_tokens" | "aborted";
     }
+  | { type: "usage"; input: number; output: number }
   | { type: "error"; error: Error };
 
 export type ToolDef = {
@@ -47,6 +48,7 @@ type OpenAIChunk = {
     };
     finish_reason?: string;
   }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 };
 
 function handleSSELine(
@@ -55,16 +57,23 @@ function handleSSELine(
 ): {
   textDelta: string | null;
   stopReason: "end_turn" | "tool_use" | "max_tokens" | null;
+  usage: { input: number; output: number } | undefined;
 } {
   let chunk: OpenAIChunk;
   try {
     chunk = JSON.parse(data) as OpenAIChunk;
   } catch {
-    return { textDelta: null, stopReason: null };
+    return { textDelta: null, stopReason: null, usage: undefined };
   }
 
-  const choice = chunk.choices[0];
-  if (!choice) return { textDelta: null, stopReason: null };
+  const usage = chunk.usage
+    ? {
+        input: chunk.usage.prompt_tokens ?? 0,
+        output: chunk.usage.completion_tokens ?? 0,
+      }
+    : undefined;
+  const choice = chunk.choices?.[0];
+  if (!choice) return { textDelta: null, stopReason: null, usage };
 
   let textDelta: string | null = null;
   let stopReason: "end_turn" | "tool_use" | "max_tokens" | null = null;
@@ -91,7 +100,7 @@ function handleSSELine(
   if (choice.finish_reason === "tool_calls") stopReason = "tool_use";
   else if (choice.finish_reason === "length") stopReason = "max_tokens";
 
-  return { textDelta, stopReason };
+  return { textDelta, stopReason, usage };
 }
 
 function flushToolCalls(
@@ -171,6 +180,7 @@ export async function* stream(
   const body: Record<string, unknown> = {
     model: model.model,
     stream: true,
+    stream_options: { include_usage: true },
     messages,
   };
   if (model.maxTokens) body.max_tokens = model.maxTokens;
@@ -241,6 +251,7 @@ export async function* stream(
         if (result.textDelta)
           yield { type: "text_delta", delta: result.textDelta };
         if (result.stopReason) stopReason = result.stopReason;
+        if (result.usage) yield { type: "usage", ...result.usage };
       }
     }
   } catch (e) {

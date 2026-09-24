@@ -68,10 +68,20 @@ async function main() {
         [
           "/models [filter]  list chat models (tool support shown when known)",
           "/model [id]       show or switch the current model",
+          "/mode [auto|manual]  show or switch tool approval mode",
           "/help             this list",
           "",
         ].join("\n"),
       );
+    },
+    async mode(arg) {
+      if (arg === "auto") args.auto = true;
+      else if (arg === "manual") {
+        args.auto = false;
+        alwaysAllow.clear(); // manual means ask again, even for "a" answers
+      } else if (arg)
+        return tui.printText("usage: /mode [auto|manual]\n");
+      tui.printText(`mode: ${args.auto ? "auto" : "manual"}\n`);
     },
     async models(filter) {
       const list = (await getModels()).filter((m) => m.id.includes(filter));
@@ -176,7 +186,6 @@ function preview(name: string, toolArgs: unknown): string {
   return "";
 }
 
-// nil [--auto] [--resume [id]]
 function parseArgs(argv: string[]): {
   auto: boolean;
   resume: string | true | undefined;
@@ -200,7 +209,6 @@ function parseArgs(argv: string[]): {
   return { auto, resume };
 }
 
-// undefined: new session; true: latest in SESSION_DIR; string: id prefix
 async function resolveSession(resume: string | true | undefined): Promise<string> {
   if (resume === undefined) {
     const id = randomBytes(4).toString("hex");

@@ -1,7 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Tool (Tool (..), ToolResult, tools) where
+module Tool (Tool (..), ToolResult (..), tools) where
 
 import Data.Aeson (FromJSON (..), Result (Error, Success), Value, fromJSON, object, withObject, (.:), (.:?), (.=))
 import Data.Text qualified as T
@@ -20,6 +20,7 @@ data Tool = Tool
     { name :: T.Text
     , description :: T.Text
     , parameters :: Value
+    , needApproval :: Bool
     , execute :: Value -> IO ToolResult
     }
 
@@ -98,6 +99,7 @@ readFileTool =
         { name = "read_file"
         , description = "reads the file"
         , parameters = readFileSchema
+        , needApproval = False
         , execute = readFileExecute
         }
 
@@ -151,6 +153,7 @@ writeFileTool =
         { name = "write_file"
         , description = "Create or fully overwrite a file (parent dirs are created). For small changes to existing files use edit."
         , parameters = writeFileSchema
+        , needApproval = True
         , execute = writeFileExecute
         }
 
@@ -221,6 +224,7 @@ editFileTool =
         { name = "edit_file"
         , description = "Edit a file. Replace the unique old_content occurance with new_content"
         , parameters = editFileSchema
+        , needApproval = True
         , execute = editFileExecute
         }
 
@@ -283,6 +287,7 @@ runBashTool =
         { name = "run_bash"
         , description = "Run a shell command in cwd. output over 200 lines is cut to the last 200 with the full log saved to a temp file."
         , parameters = runBashSchema
+        , needApproval = True
         , execute = runBashExecute
         }
 

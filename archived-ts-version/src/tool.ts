@@ -37,6 +37,7 @@ const readFile: AgentTool = {
     },
     required: ["path"],
   },
+
   execute: async (args) => {
     const { path: filePath } = args as { path: string };
     const content = await fs.readFile(filePath, "utf-8");
